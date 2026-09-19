@@ -1,0 +1,24 @@
+# -*- coding: mbcs -*-
+#
+# Abaqus/CAE Release 2022 replay file
+# Internal Version: 2021_09_15-23.27.30 176069
+# Run by User on Tue Sep  8 19:37:10 2026
+#
+
+# from driverUtils import executeOnCaeGraphicsStartup
+# executeOnCaeGraphicsStartup()
+#: Executing "onCaeGraphicsStartup()" in the site directory ...
+from abaqus import *
+from abaqusConstants import *
+session.Viewport(name='Viewport: 1', origin=(1.81771, 1.81481), width=267.567, 
+    height=180.03)
+session.viewports['Viewport: 1'].makeCurrent()
+from driverUtils import executeOnCaeStartup
+executeOnCaeStartup()
+execfile('../../abaqus/generate_paper_dataset.py', __main__.__dict__)
+#: The model "PlateModel" has been created.
+#: plate_circle8__1000          nodes= 802  load=  1000 psi
+#: 
+#: Done: 1 job(s).
+print 'RT script done'
+#: RT script done
