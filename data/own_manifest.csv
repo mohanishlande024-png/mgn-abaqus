@@ -1,0 +1,46 @@
+geometry,name,family,split,kind,a_in,b_in,n_sides,param,n_nodes,loads_done,status
+plate_own_E_H1,E_H1,horizontal_ellipse,train,ellipse,1.5,1.5,,a/b=1,2050,23,completed
+plate_own_E_H1p25,E_H1p25,horizontal_ellipse,train,ellipse,1.67705,1.34164,,a/b=1.25,2079,23,completed
+plate_own_E_H1p5,E_H1p5,horizontal_ellipse,test_interp,ellipse,1.83712,1.22474,,a/b=1.5,2085,23,completed
+plate_own_E_H2,E_H2,horizontal_ellipse,train,ellipse,2.12132,1.06066,,a/b=2,2311,23,completed
+plate_own_E_H2p5,E_H2p5,horizontal_ellipse,train,ellipse,2.37171,0.948683,,a/b=2.5,2365,23,completed
+plate_own_E_H3,E_H3,horizontal_ellipse,test_interp,ellipse,2.59808,0.866025,,a/b=3,2283,23,completed
+plate_own_E_H4,E_H4,horizontal_ellipse,train,ellipse,3,0.75,,a/b=4,2605,23,completed
+plate_own_E_H5,E_H5,horizontal_ellipse,test_interp,ellipse,3.3541,0.67082,,a/b=5,2890,23,completed
+plate_own_E_H6,E_H6,horizontal_ellipse,train,ellipse,3.67423,0.612372,,a/b=6,2996,23,completed
+plate_own_E_H8,E_H8,horizontal_ellipse,test_extrap,ellipse,4.24264,0.53033,,a/b=8,3343,23,completed
+plate_own_E_V1p25,E_V1p25,vertical_ellipse,train,ellipse,1.34164,1.67705,,b/a=1.25,2085,23,completed
+plate_own_E_V1p5,E_V1p5,vertical_ellipse,test_interp,ellipse,1.22474,1.83712,,b/a=1.5,2198,23,completed
+plate_own_E_V2,E_V2,vertical_ellipse,train,ellipse,1.06066,2.12132,,b/a=2,2271,23,completed
+plate_own_E_V2p5,E_V2p5,vertical_ellipse,train,ellipse,0.948683,2.37171,,b/a=2.5,2154,23,completed
+plate_own_E_V3,E_V3,vertical_ellipse,test_interp,ellipse,0.866025,2.59808,,b/a=3,2374,23,completed
+plate_own_E_V4,E_V4,vertical_ellipse,train,ellipse,0.75,3,,b/a=4,2636,23,completed
+plate_own_E_V5,E_V5,vertical_ellipse,test_interp,ellipse,0.67082,3.3541,,b/a=5,2751,23,completed
+plate_own_E_V6,E_V6,vertical_ellipse,train,ellipse,0.612372,3.67423,,b/a=6,3030,23,completed
+plate_own_E_V8,E_V8,vertical_ellipse,test_extrap,ellipse,0.53033,4.24264,,b/a=8,3209,23,completed
+plate_own_R_W3,R_W3,rect_width_shrinks,train,rect,3,3,,a=3 b=3,2580,23,completed
+plate_own_R_W2p625,R_W2p625,rect_width_shrinks,train,rect,2.625,3,,a=2.625 b=3,2213,23,completed
+plate_own_R_W2p25,R_W2p25,rect_width_shrinks,test_interp,rect,2.25,3,,a=2.25 b=3,2336,23,completed
+plate_own_R_W1p875,R_W1p875,rect_width_shrinks,train,rect,1.875,3,,a=1.875 b=3,1954,23,completed
+plate_own_R_W1p5,R_W1p5,rect_width_shrinks,train,rect,1.5,3,,a=1.5 b=3,2120,23,completed
+plate_own_R_W1p125,R_W1p125,rect_width_shrinks,test_interp,rect,1.125,3,,a=1.125 b=3,1928,23,completed
+plate_own_R_W0p9375,R_W0p9375,rect_width_shrinks,train,rect,0.9375,3,,a=0.9375 b=3,2128,23,completed
+plate_own_R_W0p75,R_W0p75,rect_width_shrinks,test_interp,rect,0.75,3,,a=0.75 b=3,2026,23,completed
+plate_own_R_W0p5625,R_W0p5625,rect_width_shrinks,train,rect,0.5625,3,,a=0.5625 b=3,1965,23,completed
+plate_own_R_W0p375,R_W0p375,rect_width_shrinks,test_extrap,rect,0.375,3,,a=0.375 b=3,1634,23,completed
+plate_own_R_H2p625,R_H2p625,rect_height_shrinks,train,rect,3,2.625,,a=3 b=2.625,2517,23,completed
+plate_own_R_H2p25,R_H2p25,rect_height_shrinks,test_interp,rect,3,2.25,,a=3 b=2.25,2445,23,completed
+plate_own_R_H1p875,R_H1p875,rect_height_shrinks,train,rect,3,1.875,,a=3 b=1.875,2368,23,completed
+plate_own_R_H1p5,R_H1p5,rect_height_shrinks,train,rect,3,1.5,,a=3 b=1.5,2061,23,completed
+plate_own_R_H1p125,R_H1p125,rect_height_shrinks,test_interp,rect,3,1.125,,a=3 b=1.125,2009,23,completed
+plate_own_R_H0p9375,R_H0p9375,rect_height_shrinks,train,rect,3,0.9375,,a=3 b=0.9375,2171,23,completed
+plate_own_R_H0p75,R_H0p75,rect_height_shrinks,test_interp,rect,3,0.75,,a=3 b=0.75,1980,23,completed
+plate_own_R_H0p5625,R_H0p5625,rect_height_shrinks,train,rect,3,0.5625,,a=3 b=0.5625,1881,23,completed
+plate_own_R_H0p375,R_H0p375,rect_height_shrinks,test_extrap,rect,3,0.375,,a=3 b=0.375,1972,23,completed
+plate_own_P10,P10,polygon,train,poly,3,3,10,n=10,2030,23,completed
+plate_own_P9,P9,polygon,train,poly,3,3,9,n=9,2116,23,completed
+plate_own_P8,P8,polygon,train,poly,3,3,8,n=8,2038,23,completed
+plate_own_P7,P7,polygon,test_interp,poly,3,3,7,n=7,2058,23,completed
+plate_own_P6,P6,polygon,train,poly,3,3,6,n=6,2144,23,completed
+plate_own_P5,P5,polygon,train,poly,3,3,5,n=5,2043,23,completed
+plate_own_P3,P3,polygon,test_extrap,poly,3,3,3,n=3,1909,23,completed
