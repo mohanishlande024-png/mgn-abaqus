@@ -5,6 +5,11 @@ Train the MGN on the Abaqus dataset, with checkpointing and resume.
     python scripts\train.py --epochs 50        quick sanity run
     python scripts\train.py --resume           continue from last checkpoint
 
+    python scripts\train.py --data data\dataset_aug20.pt
+        EDGE AUGMENTATION run (EA-GNN, 20% random long-range edges). The
+        augmentation settings are read from the dataset file itself, and
+        results go to results_aug20\ so the baseline results\ is untouched.
+
 WHY NOT JUST CALL MGN.fit()
     fit() calls _build_model() every time, which re-initialises the weights.
     Calling it in chunks would restart training from scratch each chunk, so
@@ -16,7 +21,7 @@ WHY NOT JUST CALL MGN.fit()
     entirely theirs and unchanged. All this file adds is the loop, the
     checkpoints and the log.
 
-WHAT IT WRITES (into results\)
+WHAT IT WRITES (into results\, or results_augNN\ for an augmented dataset)
     mgn_latest.pt        full state: weights + optimiser + epoch counter
     mgn_best.pt          weights only, at the lowest loss seen
     loss_log.csv         epoch, loss, seconds - open in Excel
@@ -32,14 +37,8 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mgn.dataset import load_dataset      # noqa: E402
-from mgn.trainer import MGN               # noqa: E402
-
-
-RESULTS = "results"
-LATEST = os.path.join(RESULTS, "mgn_latest.pt")
-BEST = os.path.join(RESULTS, "mgn_best.pt")
-LOG = os.path.join(RESULTS, "loss_log.csv")
+from mgn.dataset import load_dataset                          # noqa: E402
+from mgn.augmented_trainer import AugMGN, results_dir_for     # noqa: E402
 
 
 def fmt(seconds):
@@ -63,13 +62,13 @@ def main():
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--seed", type=int, default=0,
                     help="the paper sets no seed; we do, for reproducibility")
+    ap.add_argument("--results", default=None,
+                    help="output folder (default: results, or results_augNN "
+                         "for an augmented dataset)")
     a = ap.parse_args()
 
     torch.manual_seed(a.seed)
     np.random.seed(a.seed)
-
-    if not os.path.isdir(RESULTS):
-        os.makedirs(RESULTS)
 
     # ---- data ----------------------------------------------------------
     if not os.path.isfile(a.data):
@@ -77,7 +76,14 @@ def main():
         print("    python -m mgn.dataset --raw data/raw --out data/dataset.pt")
         return 1
 
-    cases = load_dataset(a.data)
+    cases, aug = load_dataset(a.data, return_meta=True)
+
+    RESULTS = a.results or results_dir_for(aug["aug_perc"])
+    LATEST = os.path.join(RESULTS, "mgn_latest.pt")
+    BEST = os.path.join(RESULTS, "mgn_best.pt")
+    LOG = os.path.join(RESULTS, "loss_log.csv")
+    if not os.path.isdir(RESULTS):
+        os.makedirs(RESULTS)
     y = np.concatenate([c.von_mises for c in cases])
     geoms = sorted(set(c.geometry for c in cases))
 
@@ -93,12 +99,22 @@ def main():
                                   + ")" if dev == "cuda" else ""))
     print("epochs        %d   batch %d   lr %g"
           % (a.epochs, a.batch_size, a.lr))
+    if aug["aug_perc"] > 0:
+        n_aug = sum(int(c.edge_flag.sum()) for c in cases) // len(cases)
+        n_all = sum(c.edge_index.shape[1] for c in cases) // len(cases)
+        print("augmentation  %.0f%%  (seed %d)  ~%d of %d edges per graph "
+              "are augmented" % (100 * aug["aug_perc"], aug["aug_seed"],
+                                 n_aug, n_all))
+    else:
+        print("augmentation  none (baseline graph)")
+    print("results       %s" % RESULTS)
     print("=" * 66)
 
     # ---- model ---------------------------------------------------------
-    mgn = MGN(num_layers=a.layers, hidden_channels=a.hidden,
-              embedding_dim=a.embedding, learning_rate=a.lr,
-              epochs=a.epochs, global_features=["load"])
+    mgn = AugMGN(num_layers=a.layers, hidden_channels=a.hidden,
+                 embedding_dim=a.embedding, learning_rate=a.lr,
+                 epochs=a.epochs, global_features=["load"],
+                 aug_perc=aug["aug_perc"], aug_seed=aug["aug_seed"])
 
     # Reproduce fit()'s setup, but stop short of the training loop so we can
     # drive the epochs ourselves.
@@ -123,6 +139,11 @@ def main():
     # ---- resume --------------------------------------------------------
     if a.resume and os.path.isfile(LATEST):
         ck = torch.load(LATEST, map_location=mgn.device, weights_only=False)
+        ck_aug = ck.get("augmentation", {"aug_perc": 0.0, "aug_seed": 0})
+        if ck_aug != aug:
+            print("\nREFUSING TO RESUME: %s was trained with augmentation %s "
+                  "but %s has %s." % (LATEST, ck_aug, a.data, aug))
+            return 1
         mgn._model.load_state_dict(ck["model"])
         optimizer.load_state_dict(ck["optimizer"])
         start_epoch = ck["epoch"]
@@ -158,7 +179,8 @@ def main():
             if loss < best:
                 best = loss
                 torch.save({"model": mgn._model.state_dict(),
-                            "epoch": epoch + 1, "loss": loss}, BEST)
+                            "epoch": epoch + 1, "loss": loss,
+                            "augmentation": aug}, BEST)
 
             if (epoch + 1) % 10 == 0 or epoch == start_epoch:
                 print("%6d   %.6f   %s   %s"
@@ -168,7 +190,8 @@ def main():
                 torch.save({"model": mgn._model.state_dict(),
                             "optimizer": optimizer.state_dict(),
                             "epoch": epoch + 1, "best": best,
-                            "train_losses": mgn.train_losses}, LATEST)
+                            "train_losses": mgn.train_losses,
+                            "augmentation": aug}, LATEST)
 
     except KeyboardInterrupt:
         interrupted = True
@@ -178,7 +201,8 @@ def main():
     torch.save({"model": mgn._model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "epoch": len(mgn.train_losses),
-                "best": best, "train_losses": mgn.train_losses}, LATEST)
+                "best": best, "train_losses": mgn.train_losses,
+                "augmentation": aug}, LATEST)
 
     print("\n" + "=" * 66)
     print("%s at epoch %d after %s"
@@ -190,7 +214,8 @@ def main():
     print("checkpoint    %s" % LATEST)
     print("log           %s" % LOG)
     if interrupted or len(mgn.train_losses) < a.epochs:
-        print("\nContinue with:  python scripts\\train.py --resume")
+        print("\nContinue with:  python scripts\\train.py --resume --data %s"
+              % a.data)
     else:
         # save in the paper's own format so it can be compared to theirs
         mgn.save(os.path.join(RESULTS, "multi_geometry_mgn.pt"))

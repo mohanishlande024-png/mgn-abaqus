@@ -4,6 +4,9 @@ Evaluate a trained MGN: R2 overall, per geometry, and per node type.
     python scripts\evaluate.py                          uses results\mgn_best.pt
     python scripts\evaluate.py --ckpt results\mgn_latest.pt
     python scripts\evaluate.py --no-plots               numbers only, faster
+    python scripts\evaluate.py --data data\dataset_aug20.pt
+        edge-augmented run: reads results_aug20\mgn_best.pt, writes
+        results_aug20\eval\ (the baseline results\eval\ is untouched)
 
 WHAT R2 MEANS HERE
     R2 = 1 - (sum of squared errors) / (total variance of the truth)
@@ -22,7 +25,7 @@ IMPORTANT
     result. It tells you the model fits what it was shown. Held-out numbers
     require the unseen load cases and the 7 unseen geometries.
 
-WRITES (into results\eval\)
+WRITES (into <checkpoint folder>\eval\)
     scatter.png          predicted vs actual, all nodes
     field_<geom>.png     FE truth vs prediction vs error, per geometry
     per_geometry.csv     R2, RMSE, MAE per geometry
@@ -38,12 +41,11 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mgn.dataset import load_dataset                    # noqa: E402
-from mgn.graph import NODE_TYPE_TO_ID                   # noqa: E402
-from mgn.trainer import MGN                             # noqa: E402
+from mgn.dataset import load_dataset                          # noqa: E402
+from mgn.graph import NODE_TYPE_TO_ID                         # noqa: E402
+from mgn.augmented_trainer import AugMGN, results_dir_for     # noqa: E402
 
 ID_TO_NAME = dict((v, k) for k, v in NODE_TYPE_TO_ID.items())
-OUT = os.path.join("results", "eval")
 
 
 def r2(truth, pred):
@@ -62,16 +64,22 @@ def metrics(truth, pred):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data", default=os.path.join("data", "dataset.pt"))
-    ap.add_argument("--ckpt", default=os.path.join("results", "mgn_best.pt"))
+    ap.add_argument("--ckpt", default=None,
+                    help="default: results/mgn_best.pt, or results_augNN/"
+                         "mgn_best.pt for an augmented dataset")
     ap.add_argument("--no-plots", action="store_true")
     a = ap.parse_args()
 
-    cases = load_dataset(a.data)
+    cases, aug = load_dataset(a.data, return_meta=True)
     y_all = np.concatenate([c.von_mises for c in cases])
+    if a.ckpt is None:
+        a.ckpt = os.path.join(results_dir_for(aug["aug_perc"]), "mgn_best.pt")
+    OUT = os.path.join(os.path.dirname(a.ckpt) or ".", "eval")
 
     # Rebuild the model exactly as training did, then load the weights.
-    mgn = MGN(num_layers=20, hidden_channels=64, embedding_dim=16,
-              learning_rate=1e-5, epochs=1, global_features=["load"])
+    mgn = AugMGN(num_layers=20, hidden_channels=64, embedding_dim=16,
+                 learning_rate=1e-5, epochs=1, global_features=["load"],
+                 aug_perc=aug["aug_perc"], aug_seed=aug["aug_seed"])
     mgn._train_fem = cases
     mgn._y_train = torch.tensor(y_all, dtype=torch.float).squeeze()
     fem_data = mgn._preprocess_fems(cases)
@@ -79,6 +87,10 @@ def main():
     mgn._build_model()
 
     ck = torch.load(a.ckpt, map_location=mgn.device, weights_only=False)
+    if isinstance(ck, dict) and "augmentation" in ck and ck["augmentation"] != aug:
+        print("MISMATCH: %s was trained with augmentation %s but %s has %s."
+              % (a.ckpt, ck["augmentation"], a.data, aug))
+        return 1
     state = ck["model"] if isinstance(ck, dict) and "model" in ck else ck
     mgn._model.load_state_dict(state)
     mgn._model.eval()

@@ -3,9 +3,13 @@ Reproduce Fig. 3 of Kunz & Choudhary (2026): MGN predictions on the 7 UNSEEN geo
 
     python scripts/fig3_unseen.py
     python scripts/fig3_unseen.py --npz-dir unseen_npz --ckpt results/multi_geometry_mgn.pt
+    python scripts/fig3_unseen.py --ckpt results_aug20/multi_geometry_mgn.pt
+        edge-augmented model: each unseen mesh gets the same augmentation
+        (fraction + seed) the checkpoint was trained with
 
 For every .npz in --npz-dir (written by odb_to_npz.py) it
-    1. builds the graph exactly like scripts/predict.py (same node types, same edges),
+    1. builds the graph exactly like scripts/predict.py (same node types, same edges,
+       same edge augmentation as the checkpoint - via mgn.dataset.build_topology),
     2. predicts von Mises at the load stored in the file (5000 psi for Fig. 3),
     3. compares with the Abaqus truth stored in the same file.
 
@@ -15,7 +19,7 @@ LAYOUT (same as the paper)
     title  : R^2 = 1 - sum((truth - pred)^2) / sum((truth - mean(truth))^2)
     grey   : the paper's R^2 for the same panel, for comparison
 
-WRITES (into --out, default results/fig3/)
+WRITES (into --out, default <checkpoint folder>/fig3/)
     fig3_unseen_<load>psi.png    the full figure (7 panels, (a)-(g))
     fig3_<geometry>.png          one panel per geometry
     fig3_r2.csv                  R2, RMSE, MAE, peaks, and the paper's R2
@@ -38,9 +42,8 @@ from matplotlib.patches import Rectangle
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mgn.dataset import Case                                  # noqa: E402
-from mgn.graph import build_edges, classify_nodes             # noqa: E402
-from mgn.trainer import MGN                                   # noqa: E402
+from mgn.dataset import Case, build_topology                  # noqa: E402
+from mgn.augmented_trainer import AugMGN                      # noqa: E402
 
 # paper order, labels and R2 (Fig. 3)
 PANELS = [
@@ -60,20 +63,23 @@ def read_name(arr):
     return v.decode("utf-8") if isinstance(v, bytes) else str(v)
 
 
-def load_case(path):
+def load_case(path, aug_perc=0.0, aug_seed=0):
     d = np.load(path, allow_pickle=False)
     coords = d["coords"].astype(np.float32)
     tris = d["tris"].astype(np.int64)
     truth = d["mises"].astype(np.float64)
     load = float(d["load"])
     name = read_name(d["geometry"]) if "geometry" in d else os.path.basename(path).split("__")[0]
+    edge_index, node_types, edge_flag = build_topology(
+        coords, tris, name, aug_perc=aug_perc, aug_seed=aug_seed)
     case = Case(
         geometry=name,
         coordinates=coords,
-        edge_index=torch.from_numpy(build_edges(tris)),
-        node_types=classify_nodes(coords, tris),
+        edge_index=edge_index,
+        node_types=node_types,
         von_mises=np.zeros(len(coords), dtype=np.float32),
         metadata={"load": load},
+        edge_flag=edge_flag,
     )
     return case, tris, truth, load
 
@@ -116,7 +122,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--npz-dir", default="unseen_npz")
     ap.add_argument("--ckpt", default=os.path.join("results", "multi_geometry_mgn.pt"))
-    ap.add_argument("--out", default=os.path.join("results", "fig3"))
+    ap.add_argument("--out", default=None,
+                    help="default: <checkpoint folder>/fig3")
     ap.add_argument("--load", type=float, default=None,
                     help="use only files at this load (default: all loads found)")
     a = ap.parse_args()
@@ -129,13 +136,18 @@ def main():
         print("No model at %s" % a.ckpt)
         return 1
 
-    mgn = MGN.load(a.ckpt)
+    mgn = AugMGN.load(a.ckpt)
+    if a.out is None:
+        a.out = os.path.join(os.path.dirname(a.ckpt) or ".", "fig3")
     os.makedirs(a.out, exist_ok=True)
+    if mgn.augmented:
+        print("edge augmentation %.0f%%, seed %d (from checkpoint)"
+              % (100 * mgn.aug_perc, mgn.aug_seed))
 
     # ---- predict every file ------------------------------------------------
     results = {}                          # (name, load) -> dict
     for f in files:
-        case, tris, truth, load = load_case(f)
+        case, tris, truth, load = load_case(f, mgn.aug_perc, mgn.aug_seed)
         if a.load is not None and abs(load - a.load) > 1e-6:
             continue
         pred = np.asarray(mgn.predict(case), dtype=np.float64).ravel()

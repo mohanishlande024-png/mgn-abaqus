@@ -13,6 +13,11 @@ Predict von Mises stress for a load the model was never trained on.
     # compare against Abaqus truth stored in the npz
     python scripts/predict.py --npz data/raw/circle8__7499.npz --load 7499 --compare
 
+    # an EDGE-AUGMENTED model: the graph is built with the augmentation
+    # stored in the checkpoint, so it matches training automatically
+    python scripts/predict.py --ckpt results_aug20/multi_geometry_mgn.pt \
+        --data data/dataset_aug20.pt --geometry circle8 --load 7250
+
 WHAT "UNSEEN LOAD" MEANS HERE
     The mesh gives the graph: node positions, edges, node types. The load
     enters only as a GLOBAL FEATURE, re-injected at every message-passing
@@ -23,7 +28,7 @@ WHAT "UNSEEN LOAD" MEANS HERE
     so extract_odb.py must run first and produce a .npz. The stress array
     in that .npz is ignored here (a zero array is fine).
 
-OUTPUT (into results/predictions/)
+OUTPUT (into <checkpoint folder>/predictions/)
     <geometry>__<load>.csv      x, y, node_type, predicted_von_mises
     <geometry>__<load>.png      field plot, unless --no-plots
 
@@ -43,17 +48,21 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mgn.dataset import Case, load_dataset          # noqa: E402
-from mgn.graph import NODE_TYPE_TO_ID, build_edges, classify_nodes  # noqa: E402
-from mgn.trainer import MGN                         # noqa: E402
+from mgn.dataset import Case, build_topology, load_dataset   # noqa: E402
+from mgn.graph import NODE_TYPE_TO_ID                         # noqa: E402
+from mgn.augmented_trainer import AugMGN                      # noqa: E402
 
-OUT = os.path.join("results", "predictions")
 ID_TO_NAME = dict((v, k) for k, v in NODE_TYPE_TO_ID.items())
 
 
-def case_from_dataset(path, geometry):
+def case_from_dataset(path, geometry, mgn):
     """Reuse a mesh already compiled into dataset.pt."""
-    cases = load_dataset(path)
+    cases, aug = load_dataset(path, return_meta=True)
+    if (aug["aug_perc"], aug["aug_seed"]) != (mgn.aug_perc, mgn.aug_seed):
+        print("%s was built with augmentation %s, but the checkpoint was "
+              "trained with aug_perc=%g, aug_seed=%d. Pass the matching --data."
+              % (path, aug, mgn.aug_perc, mgn.aug_seed))
+        return None, None
     names = sorted(set(c.geometry for c in cases))
     match = [c for c in cases if c.geometry == geometry]
     if not match:
@@ -64,21 +73,25 @@ def case_from_dataset(path, geometry):
     return match[0], loads
 
 
-def case_from_npz(path):
-    """Build a mesh straight from an extract_odb.py export."""
+def case_from_npz(path, mgn):
+    """Build a mesh straight from an extract_odb.py export, augmented exactly
+    as the checkpoint was trained (aug_perc and seed are stored in it)."""
     d = np.load(path, allow_pickle=False)
     coords = d["coords"].astype(np.float32)
     tris = d["tris"].astype(np.int64)
     truth = d["mises"].astype(np.float32) if "mises" in d else None
     geom = os.path.splitext(os.path.basename(path))[0].split("__")[0]
 
+    edge_index, node_types, edge_flag = build_topology(
+        coords, tris, geom, aug_perc=mgn.aug_perc, aug_seed=mgn.aug_seed)
     case = Case(
         geometry=geom,
         coordinates=coords,
-        edge_index=torch.from_numpy(build_edges(tris)),
-        node_types=classify_nodes(coords, tris),
+        edge_index=edge_index,
+        node_types=node_types,
         von_mises=np.zeros(len(coords), dtype=np.float32),
         metadata={"load": 0.0},
+        edge_flag=edge_flag,
     )
     return case, truth
 
@@ -125,17 +138,21 @@ def main():
         print("is a different format and cannot be loaded here.")
         return 1
 
+    # The checkpoint decides how the graph is built, so load it first.
+    mgn = AugMGN.load(a.ckpt)
+    OUT = os.path.join(os.path.dirname(a.ckpt) or ".", "predictions")
+
     # ---- mesh ----------------------------------------------------------
     truth = None
     if a.geometry:
-        case, trained_loads = case_from_dataset(a.data, a.geometry)
+        case, trained_loads = case_from_dataset(a.data, a.geometry, mgn)
         if case is None:
             return 1
     else:
         if not os.path.isfile(a.npz):
             print("No such file: %s" % a.npz)
             return 1
-        case, truth = case_from_npz(a.npz)
+        case, truth = case_from_npz(a.npz, mgn)
         trained_loads = None
 
     counts = {}
@@ -146,15 +163,15 @@ def main():
     print("=" * 62)
     print("geometry      %s" % case.geometry)
     print("nodes         %d" % len(case.coordinates))
-    print("edges         %d" % case.edge_index.shape[1])
+    n_aug = int(case.edge_flag.sum()) if case.edge_flag is not None else 0
+    print("edges         %d%s" % (case.edge_index.shape[1],
+                                  ("  (%d augmented)" % n_aug) if n_aug else ""))
     print("node types    %s" % ", ".join("%s=%d" % (k, counts[k])
                                          for k in sorted(counts)))
     if trained_loads:
         print("trained loads %.0f to %.0f psi  (%d of them)"
               % (min(trained_loads), max(trained_loads), len(trained_loads)))
     print("=" * 62)
-
-    mgn = MGN.load(a.ckpt)
 
     if not os.path.isdir(OUT):
         os.makedirs(OUT)

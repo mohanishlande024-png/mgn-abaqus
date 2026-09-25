@@ -20,4 +20,5 @@ results/eval/
 *.lck
 *.jnl
 *.rpy
-*.rec
+*.recresults_aug20/ results_test/ data/dataset_aug20.pt data/plots_aug20/ data/unseen_shapes/
+results_aug20/
